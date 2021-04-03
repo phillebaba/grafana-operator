@@ -187,6 +187,9 @@ func getVolumes(cr *v1alpha1.Grafana) []v13.Volume {
 	var volumes []v13.Volume
 	var volumeOptional bool = true
 
+	// Additional voluemes defined in the deployment
+	volumes = append(volumes, cr.Spec.Deployment.Volumes...)
+
 	// Volume to mount the config file from a config map
 	volumes = append(volumes, v13.Volume{
 		Name: GrafanaConfigName,
