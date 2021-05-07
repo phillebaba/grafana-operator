@@ -19,7 +19,9 @@ const (
 	DeleteFolderByUIDUrl       = "%v/api/folders/%v"
 	GetFolderByIDUrl           = "%v/api/folders/id/%v"
 	//TODO is this right? VV
-	SearchURL = "%v/api/search?type=dash-db"
+	SearchURL         = "%v/api/search?type=dash-db"
+	CreatePlaylistUrl = "%v/api/playlists/"
+	DeletePlaylistUrl = "%v/api/playlists/%v"
 )
 
 const (
@@ -62,6 +64,8 @@ type GrafanaClient interface {
 	CreateOrUpdateFolder(folderName string) (GrafanaFolderResponse, error)
 	DeleteFolder(folderID *int64) error
 	SafeToDelete(dashboards []*v1alpha1.GrafanaDashboardRef, folderID *int64) bool
+	CreatePlaylist(playlist []byte) error
+	DeletePlaylist() error
 }
 
 type GrafanaClientImpl struct {
@@ -420,4 +424,83 @@ func (r *GrafanaClientImpl) SafeToDelete(dashlist []*v1alpha1.GrafanaDashboardRe
 		}
 	}
 	return true
+}
+
+type GrafanaPlaylistRequest struct {
+	Name     string                       `json:"name"`
+	Interval time.Duration                `json:"interval"`
+	Items    []GrafanaPlaylistRequestItem `json:"items"`
+}
+
+type GrafanaPlaylistRequestItem struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	Title string `json:"title"`
+	Order string `json:"order"`
+}
+
+type GrafanaPlaylistResponse struct {
+	ID       int           `json:"id"`
+	Name     string        `json:"name"`
+	Interval time.Duration `json:"interval"`
+}
+
+func (r *GrafanaClientImpl) CreatPlaylist(grafanaRequest GrafanaPlaylistRequest) (*GrafanaPlaylistResponse, error) {
+	rawURL := fmt.Sprintf(CreatePlaylistUrl, r.url)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	parsed.User = url.UserPassword(r.user, r.password)
+
+	raw, err := json.Marshal(grafanaRequest)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", parsed.String(), bytes.NewBuffer(raw))
+	if err != nil {
+		return nil, err
+	}
+	setHeaders(req)
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("error creating playlist, expected status 200 but got %v", resp.StatusCode)
+	}
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GrafanaPlaylistResponse{}
+	err = json.Unmarshal(data, response)
+	return response, nil
+}
+
+func (r *GrafanaClientImpl) DeletePlaylist(playlistID string) error {
+	rawURL := fmt.Sprintf(DeletePlaylistUrl, r.url, playlistID)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	parsed.User = url.UserPassword(r.user, r.password)
+
+	req, err := http.NewRequest("DELETE", parsed.String(), nil)
+	if err != nil {
+		return err
+	}
+	setHeaders(req)
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("error deleting playlist, expected status 200 but got %v", resp.StatusCode)
+	}
+	return nil
 }
